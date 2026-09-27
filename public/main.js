@@ -620,8 +620,6 @@ function drawParticles() {
 let lastNow = performance.now();
 
 function frame(now) {
-  // Physics still uses frame dt; clamp it so a background tab doesn't launch
-  // cubes into orbit on return. Everything TIMED uses songTime() instead.
   const dt = Math.min((now - lastNow) / 1000, 1 / 20);
   lastNow = now;
   const t = songTime();
