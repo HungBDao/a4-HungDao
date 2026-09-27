@@ -18,6 +18,73 @@ const settings = {
     scrollSpeed: 300, // px per second
     gravity: 3000, // px per second squared
     jumpHeight: 100, // px, peak height of the jump
+    audioOffset: 0, //ms, + if the obstacle feels early, - if it feels late
+    volume: 0.8, // 0.0 to 1.0
+}
+
+const SONG = {
+    url: "song.mp3",
+    bpm: 130,
+    firstBeat: 0.160, //seconds, time of the first beat in the song
+}
+const SECONDS_PER_BEAT = 60 / SONG.bpm;
+
+const audio = {
+    ctx: null,
+    buffer: null,
+    gain: null,
+    source: null,
+    startAt: 0, //audio.ctx.currentTime when the song started
+};
+
+let state = "loading"; // "loading", "ready" (waiting for click), "playing", "ended"
+
+async function loadSong() {
+    audio.ctx = new AudioContext();
+    audio.gain = audio.ctx.createGain();
+    audio.gain.gain.value = settings.volume;
+    audio.gain.connect(audio.ctx.destination);
+
+    const response = await fetch(SONG.url);
+    const arrayBuffer = await response.arrayBuffer();
+    audio.buffer = await audio.ctx.decodeAudioData(arrayBuffer);
+    state = "ready";
+}
+loadSong().catch((err) => {
+    console.error("Error loading song:", err);
+    state = "error";
+});
+
+async function startSong() {
+    if (state !== "ready" && state !== "ended") return;
+    await audio.ctx.resume(); // Resume the audio context if it was suspended
+
+    // A buffer source node can only be started once, so we need to create a new one each time we start the song
+    audio.source = audio.ctx.createBufferSource();
+    audio.source.buffer = audio.buffer;
+    audio.source.connect(audio.gain);
+    audio.source.onended = () => {
+        if (state === "playing") {
+            state = "ended";
+        }
+    };
+
+    audio.startAt = audio.ctx.currentTime + 0.1;
+    audio.source.start(audio.startAt);
+
+    for (const lane of lanes) {
+        Object.assign(lane.cube, { y: 0, vy: 0, angle: 0, onGround: true, held: false });
+    }
+    state = "playing";
+}
+
+function songTime() {
+    if (!audio.ctx || state !== "playing") return 0;
+    return audio.ctx.currentTime - audio.startAt - settings.audioOffset / 1000;
+}
+
+function beatAt(t) {
+    return (t - SONG.firstBeat) / SECONDS_PER_BEAT;
 }
 
 function calculateJumpVelocity() {
@@ -85,6 +152,10 @@ function tryJump(lane) {
 
 window.addEventListener('keydown', (e) => {
     if (e.repeat) return; // Ignore repeated keydown events
+    if (state !== "playing") {
+        startSong();
+        return;
+    }
     const lane = lanes.find((l) => l.key === e.code);
     if (lane) {
         press(lane);
@@ -100,6 +171,10 @@ window.addEventListener('keyup', (e) => {
 
 const pointerLine = new Map();
 canvas.addEventListener('pointerdown', (e) => {
+    if (state !== "playing") {
+        startSong();
+        return;
+    }
     const lane = e.clientY < window.innerHeight * 0.6 ? lanes[0] : lanes[1];
     pointerLine.set(e.pointerId, lane);
     press(lane);
@@ -141,37 +216,48 @@ function updateCube(lane, dt) {
 
 const startTime = performance.now();
 
-function drawLine(lane, t) {
+function xForTime(lane, eventTime, now) {
+    const {cubeX} = laneGeometry(lane);
+    return cubeX + lane.dir * (eventTime - now) * settings.scrollSpeed;
+}
+
+function drawLane(lane, t) {
     const w = window.innerWidth;
-    const {groundY, cubeX} = laneGeometry(lane);
+    const {groundY} = laneGeometry(lane);
     const c = lane.cube;
 
     // Ground line
+    const beat = beatAt(t);
+    const pulse = state === "playing" && beat >= 0 ? 1 - (beat - Math.floor(beat)) : 0; // Pulse between 0 and 1
     ctx.strokeStyle = lane.color;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3 + 3 * pulse * pulse; // Pulse the line width
     ctx.beginPath();
     ctx.moveTo(0, groundY); // Start at the left edge of the canvas
     ctx.lineTo(w, groundY); // Draw to the right edge of the canvas
     ctx.stroke();
 
     // Tick marks under the ground line that scroll
-    const spacing = 80;
-    const offset = ((t * settings.scrollSpeed * lane.dir) % spacing + spacing) % spacing; // Ensure offset is positive
-    ctx.globalAlpha = 0.35; // Set transparency for the dashed line
+    const visibleBeats = w / (settings.scrollSpeed * SECONDS_PER_BEAT) + 2; // +2 to ensure we cover the whole width
+    const first = Math.floor(beat - visibleBeats);
+    const last = Math.ceil(beat + visibleBeats);
     ctx.lineWidth = 2;
-    for(let x = -offset; x < w + spacing; x += spacing) {
+    for (let b = first; b <= last; b++) {
+        if (b < 0) continue; // Don't draw ticks for negative beats
+        const x = xForTime(lane, SONG.firstBeat + b * SECONDS_PER_BEAT, t);
+        const bar = b % 4 === 0;
+        ctx.globalAlpha = bar ? 0.6 : 0.3; // Make bar lines more opaque
         ctx.beginPath();
         ctx.moveTo(x, groundY + 8);
-        ctx.lineTo(x - 20 * lane.dir, groundY + 24);
+        ctx.lineTo(x - 12 * lane.dir, groundY + (bar ? 30 : 20));
         ctx.stroke();
     }
     ctx.globalAlpha = 1.0; // Reset transparency for subsequent drawings
 
     // Cube
-    const cx = cubeX;
+    const {cubeX} = laneGeometry(lane);
     const cy = groundY - CUBE_SIZE / 2 - c.y;
     ctx.save();
-    ctx.translate(cx, cy);
+    ctx.translate(cubeX, cy);
     ctx.rotate(c.angle);
     ctx.fillStyle = lane.color;
     ctx.fillRect(-CUBE_SIZE / 2, -CUBE_SIZE / 2, CUBE_SIZE, CUBE_SIZE);
@@ -187,6 +273,31 @@ function drawLine(lane, t) {
     ctx.textAlign = lane.dir > 0 ? "left" : "right";
     ctx.fillText(lane.key.replace("Key", ""), lane.dir > 0 ? 12 : w - 12, groundY + 44);
     ctx.globalAlpha = 1.0;
+}
+
+function drawHud(t) {
+    const w = window.innerWidth;
+    ctx.fillStyle = "#e8ecff";
+    ctx.textAlign = "center";
+    ctx.font = "20px system-ui, sans-serif";
+    const msg = {
+        loading: "Loading song...",
+        ready: "Click or press any key to start",
+        ended: "Song ended. Click or press any key to restart",
+        error: "Error loading song. Check console for details.",
+    }[state];
+    if (msg) {
+        ctx.fillText(msg, w / 2, 60);
+    }
+
+    if (state === "playing") {
+        ctx.textAlign = "right";
+        ctx.font = "14px ui-monospace, monospace";
+        ctx.globalAlpha = 0.6;
+        const beat = Math.max(0, Math.floor(beatAt(t)));
+        ctx.fillText(`${t.toFixed(2)}s | Beat ${beat} | Bar ${Math.floor(beat / 4) + 1}`, w - 12, 24);
+        ctx.globalAlpha = 1.0;
+    }
 }
 
 let lastNow = performance.now();
@@ -205,8 +316,10 @@ function frame(now) {
     
     // Draw each lane
     for (const lane of lanes) {
-        drawLine(lane, t);
+        drawLane(lane, t);
     }
+
+    drawHud(t);
 
     requestAnimationFrame(frame);
 }
