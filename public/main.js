@@ -1,3 +1,5 @@
+import { chart } from './chart.js';
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -69,8 +71,10 @@ async function startSong() {
         }
     };
 
-    audio.startAt = audio.ctx.currentTime + 0.1;
-    audio.source.start(audio.startAt);
+    const skip = Number(new URLSearchParams(location.search).get("t") || 0);
+    const when = audio.ctx.currentTime + 0.1; // Start after a short delay
+    audio.source.start(when, skip);
+    audio.startAt = when - skip; // Record the time when the song started, adjusted for any skip
 
     for (const lane of lanes) {
         Object.assign(lane.cube, { y: 0, vy: 0, angle: 0, onGround: true, held: false });
@@ -123,6 +127,22 @@ for (const lane of lanes) {
         onGround: true,
         held: false,
     }
+}
+
+const SPIKE_W = 40;
+const SPIKE_H = 40;
+const laneByLetter = { T: lanes[0], B: lanes[1] };
+for (const lane of lanes) {
+    lane.spikes = [];
+}
+for(const [beat, letters] of chart) {
+    const time = SONG.firstBeat + beat * SECONDS_PER_BEAT;
+    for (const letter of letters) {
+        laneByLetter[letter].spikes.push({ beat, time });
+    }
+}
+for (const lane of lanes) {
+    lane.spikes.sort((a, b) => a.time - b.time);
 }
 
 // Calculate the geometry for a given lane
@@ -223,7 +243,7 @@ function xForTime(lane, eventTime, now) {
 
 function drawLane(lane, t) {
     const w = window.innerWidth;
-    const {groundY} = laneGeometry(lane);
+    const {groundY, cubeX: cubeX0} = laneGeometry(lane);
     const c = lane.cube;
 
     // Ground line
@@ -249,6 +269,24 @@ function drawLane(lane, t) {
         ctx.beginPath();
         ctx.moveTo(x, groundY + 8);
         ctx.lineTo(x - 12 * lane.dir, groundY + (bar ? 30 : 20));
+        ctx.stroke();
+    }
+    ctx.globalAlpha = 1.0; // Reset transparency for subsequent drawings
+
+    // Spikes
+    ctx.fillStyle = lane.color;
+    ctx.strokeStyle = "#e8ecff";
+    ctx.lineWidth = 2;
+    for (const spike of lane.spikes) {
+        const x = xForTime(lane, spike.time, t);
+        if (x < -SPIKE_W || x > w + SPIKE_W) continue; // Skip spikes that are off-screen
+        ctx.globalAlpha = (x - cubeX0) * lane.dir < -SPIKE_W ? 0.35 : 1.0; // Example calculation for transparency based on position
+        ctx.beginPath();
+        ctx.moveTo(x - SPIKE_W / 2, groundY);
+        ctx.lineTo(x, groundY - SPIKE_H);
+        ctx.lineTo(x + SPIKE_W / 2, groundY);
+        ctx.closePath();
+        ctx.fill();
         ctx.stroke();
     }
     ctx.globalAlpha = 1.0; // Reset transparency for subsequent drawings
