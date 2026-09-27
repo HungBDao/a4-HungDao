@@ -1,62 +1,43 @@
-Assignment 4 - Creative Coding: Interactive Multimedia Experiences
-===
+## Dual Dash
+https://YOUR-APP.onrender.com 
 
-Due: September 25th, by 1:59 PM.
+**Dual Dash** is a two-lane rhythm runner inspired by Geometry Dash. Two cubes run in opposite directions: the top one to the right and the bottom one to the left. You jump each one over spikes with its own key. Every spike is placed on a beat of the song, so you play by ear as much as by eye. It's built with **Canvas** for the graphics and the **Web Audio API** for playback, timing and sound effects, served by a small **Express** server.
 
-For this assignment we will focus on client-side development using popular audio/graphics/visualization technologies. The goal of this assignment is to refine our JavaScript knowledge while exploring the multimedia capabilities of the browser.
+### Goal of the application
+The goal was a small but complete rhythm game in which two independent inputs play one song. The main challenge for the player is splitting attention between two lanes that scroll in opposite directions, with both locked to the music.
 
-[WebAudio / Canvas Tutorial](https://github.com/cs-4241-26a/cs-4241-26a.github.io/blob/main/using.webaudio_and_canvas.md)  
-[SVG + D3 tutorial](https://github.com/cs-4241-26a/cs-4241-26a.github.io/blob/main/using.svg_and_d3.md)  
+### How to play
+The how-to-play screen appears when the page loads. In short:
+- <kbd>F</kbd> jumps the **top** cube and <kbd>J</kbd> jumps the **bottom** cube.
+- On touch screens or with a mouse, tap the upper part of the screen for the top cube and the lower part for the bottom cube. Two fingers work at once, via the Pointer Events API.
+- Hold a button to jump again the moment you land.
+- Hit a spike and you crash. Press any key or tap to retry. The bar along the top shows your progress, and the yellow marker shows your best run.
 
-Baseline Requirements
----
+### User-controlled parameters (settings panel, top left)
+| Parameter | Range | Effect |
+|---|---|---|
+| Scroll speed | 250–700 px/s | How early you see spikes coming. The timing stays on the beat. |
+| Jump height | 70–140 px | Jump height, and with it how long each jump lasts |
+| Audio offset | −200 to +200 ms | Shifts the visuals against the audio to fix latency on a given device |
+| Volume | 0–100% | Music and sound effects, through a Web Audio `GainNode` |
 
-Your application is required to implement the following functionalities:
+Settings are saved in `localStorage`, and **Reset** restores the defaults.
 
-- A server created using Express. This server can be as simple as needed.
-- A client-side interactive experience using at least one of the following web frameworks.
-  - [Three.js](https://threejs.org/): A library for 3D graphics / VR experiences
-  - [D3.js](https://d3js.org): A library that is primarily used for interactive data visualizations
-  - [Canvas](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API): A 2D raster drawing API included in all modern browsers
-  - [SVG](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API): A 2D vector drawing framework that enables shapes to be defined via XML.
-  - [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API): An API for audio synthesis, analysis, processing, and file playback.
-  - [KAPLAY](https://kaplayjs.com): Browser-based gaming platform
-- A user interface for interaction with your project, which must expose at least four parameters for user control. [tweakpane](https://cocopon.github.io/tweakpane/) is highly recommended for this, but you can also use regular HTML `<input>` tags (the `range` type is useful to create sliders). You might also explore interaction by tracking mouse movement via the `window.onmousemove` event handler in tandem with the `event.clientX` and `event.clientY` properties. Consider using the [Pointer Events API](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events) to ensure that that both mouse and touch events will both be supported in your app.
-- Your application should display basic documentation for the user interface when the application first loads.
+### Technical notes
+- **Everything runs on the audio clock.** Spike positions come from `audioContext.currentTime`, not from frame time: `x = cubeX ± (spikeTime − songTime) × speed`. The visuals therefore stay in sync with the music even when frames drop. Frame time is used only for the jump physics.
+- **The chart** (`public/chart.js`) lists `[beat, lanes]` entries on a 130 BPM grid. I generated it offline by beat-tracking the song and detecting its drum hits with librosa. Loudness sets the density: quiet sections get sparse spikes, mid sections quarter notes, and loud sections eighth notes plus both-lane hits. Spikes in the same lane are always at least 1.5 beats apart, so every one can be cleared.
+- **Synthesized crash sound:** a square-wave pitch drop plus a noise burst, generated with Web Audio nodes instead of loaded from a file.
+- **Forgiving hitboxes,** like Geometry Dash: the cube's box is slightly inset, and the tip of each spike is harmless.
 
-The interactive experience should possess a reasonable level of complexity. Some examples:
-### Three.js
-- A generative algorithm creates simple agents that move through a virtual world. Your interface controls the behavior / appearance of these agents.
-- A simple 3D game... you really want this to be a simple as possible or it will be outside the scope of this assignment.
-- An 3D audio visualization of a song of your choosing. User interaction should control aspects of the visualization. 
-### Canvas
-- Implement a generative algorithm such as [Conway's Game of Life](https://bitstorm.org/gameoflife/) (or 1D cellular automata) and provide interactive controls. Note that the Game of Life has been created by 100s of people using `<canvas>`; we'll be checking to ensure that your implementation is not a copy of these.
-- Design a 2D audio visualizer of a song of your choosing. User interaction should control visual aspects of the experience. 
-### Web Audio API
-- Create a screen-based musical instrument using the Web Audio API. You can use projects such as [Interface.js](http://charlie-roberts.com/interface/) or [Nexus UI](https://nexus-js.github.io/ui/api/#Piano) to provide common musical interface elements, or use tweakpane in combination with mouse/touch events (use the Pointer Events API). Your GUI should enable users to control aspects of sound synthesis. If you want to use higher-level instruments instead of the raw WebAudio API sounds, consider trying the instruments provided by [Tone.js](https://tonejs.github.io) or [Gibber](https://github.com/charlieroberts/gibber.audio.lib).
-### D3.js
-- Create visualizations using the datasets found at [Awesome JSON Datasets](https://github.com/jdorfman/Awesome-JSON-Datasets). Experiment with providing different visualizations of the same data set, and providing users interactive control over visualization parameters and/or data filtering. Alternatively, create a single visualization with using one of the more complicated techniques shown at [d3js.org](d3js.org) and provide meaningful points of interaction for users.
+### Challenges
+- **Audio/visual sync.** My first version used frame time, which drifts from the music. Switching everything to `AudioContext.currentTime`, and scheduling the song to start slightly in the future, fixed it. The audio-offset slider handles device latency.
+- **Making the chart beatable.** At the default physics one jump lasts about 1.1 beats, so two spikes one beat apart in the same lane can't be cleared. I derived spacing rules from the jump arc, then verified them with an autoplay mode (below) that clears the whole song at the default settings.
+- **Browser autoplay rules.** Audio can't start until the user interacts, so the how-to-play screen doubles as the start button.
+- **Deploying.** Express serves `public/` using an absolute path, and JS, CSS and MP3 files get explicit content types. With a relative path, a host that starts the app from another folder returns HTML 404 pages, and the browser refuses to run them as modules ("MIME type text/html").
 
-Deliverables
----
+### Extras for testing
+- `?auto`: the cubes jump by themselves (demo / chart check).
+- `?t=60`: start 60 s into the song. It applies to the first run only, with a 1-second grace period.
 
-Do the following to complete this assignment:
-
-1. Implement your project with the above requirements.
-3. Test your project to make sure that when someone goes to your main page on Glitch/Heroku/etc., it displays correctly.
-4. Ensure that your project has the proper naming scheme `a4-firstname-lastname` so we can find it.
-5. Fork this repository and modify the README to the specifications below. *NOTE: If you don't use Glitch for hosting (where we can see the files) then you must include all project files that you author in your repo for this assignment*.
-6. Create and submit a Pull Request to the original repo. Name the pull request using the following template: `a4-firstname-lastname`.
-
-Sample Readme (delete the above when you're ready to submit, and modify the below so with your links and descriptions)
----
-
-## Your Web Application Title
-
-your hosting link e.g. http://a4-charlieroberts.me
-
-Include a very brief summary of your project here. Images are encouraged when needed, along with concise, high-level text. Be sure to include:
-
-- the goal of the application
-- challenges you faced in realizing the application
-- the instructions you present in the website should be clear enough to use the application, but if you feel any need to provide additional instructions please do so here.
+### Credits
+Music: "My World (Blood Oath Tale ver.)" (Rossi EP), from *Arknights: Endfield*. It's used for a non-commercial class project, and all rights belong to their owners.

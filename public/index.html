@@ -1,26 +1,70 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dual Dash</title>
-    <link rel="icon" href="data:,"/>
-    <style>
-        html, body {
-            margin: 0;
-            height: 100%;
-            overflow: hidden;
-            background: #0d0f1a;
-        }
-        canvas {
-            display: block;
-            touch-action: none;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dual Dash</title>
+  <link rel="icon" href="data:," /> <!-- no favicon; silences the 404 -->
+  <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
-    <canvas id="game"></canvas>
-    <script type="module" src="main.js"></script>
+  <canvas id="game"></canvas>
+
+  <!-- Settings: 4 user-controlled parameters -->
+  <details id="settings" open>
+    <summary>⚙ Settings</summary>
+    <label>Scroll speed <span id="speedVal"></span>
+      <input id="speed" type="range" min="250" max="700" step="10" />
+    </label>
+    <label>Jump height <span id="jumpVal"></span>
+      <input id="jump" type="range" min="70" max="140" step="5" />
+    </label>
+    <label>Audio offset <span id="offsetVal"></span>
+      <input id="offset" type="range" min="-200" max="200" step="5" />
+    </label>
+    <label>Volume <span id="volumeVal"></span>
+      <input id="volume" type="range" min="0" max="1" step="0.05" />
+    </label>
+    <div class="row">
+      <button id="reset" type="button">Reset</button>
+      <button id="showHelp" type="button">How to play</button>
+    </div>
+  </details>
+
+  <!-- How-to-play overlay: shown when the page first loads -->
+  <div id="help">
+    <div class="card">
+      <h1><span class="t">DUAL</span> <span class="b">DASH</span></h1>
+      <p class="sub">A two-cube rhythm runner. Every spike lands on the beat of the song.</p>
+
+      <h2>Goal</h2>
+      <ul>
+        <li>The <b style="color:var(--top)">top</b> cube runs right, the <b style="color:var(--bottom)">bottom</b> cube runs left. Jump every spike in both lanes until the song ends.</li>
+        <li>Spikes land on the beat, so listen as well as watch.</li>
+      </ul>
+
+      <h2>Controls</h2>
+      <ul>
+        <li><kbd class="t">F</kbd> jumps the top cube, <kbd class="b">J</kbd> jumps the bottom cube.</li>
+        <li>Touch / mouse: tap the <b>upper</b> or <b>lower</b> part of the screen.</li>
+        <li>Hold to keep jumping. After a crash, press any key or tap to retry.</li>
+      </ul>
+
+      <h2>Settings (top-left panel)</h2>
+      <ul>
+        <li><b>Scroll speed</b>: how early you see spikes coming (timing stays on the beat).</li>
+        <li><b>Jump height</b>: higher jumps also last longer.</li>
+        <li><b>Audio offset</b>: spikes feel early vs. the music → move right; late → move left.</li>
+        <li><b>Volume</b>: music and sound effects.</li>
+      </ul>
+
+      <div class="start">
+        <button id="play" type="button" disabled>Loading song…</button>
+        <p class="hint">or press <kbd>Space</kbd></p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="main.js"></script>
 </body>
 </html>
